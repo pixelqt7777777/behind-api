@@ -1,0 +1,17 @@
+{
+  "name": "behind-api",
+  "version": "1.0.0",
+  "description": "Bulk account registration tool for behindtheemail.com",
+  "main": "register.js",
+  "type": "module",
+  "scripts": {
+    "register": "node register.js",
+    "register:headless": "HEADLESS=true node register.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "playwright": "^1.61.1"
+  }
+}

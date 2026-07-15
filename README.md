@@ -38,6 +38,22 @@ Edit `register.js` to change:
 - `PASSWORD` — the password used for all accounts (default: `Pixel123@#`)
 - `DELAY_BETWEEN_SIGNUPS_MS` — delay between signups in ms (default: 5000)
 
+## Debug mode
+
+To see exactly what's happening (useful on a headless server), run with `DEBUG=true`:
+
+```bash
+DEBUG=true xvfb-run -a node register.js
+```
+
+This creates a `debug/` folder with a subfolder per email containing:
+- **Screenshots** (`.png`) of every step: page loaded, form filled, Turnstile, after submit, dashboard/failure
+- **HTML snapshots** (`.html`) of each step
+- **network.log** — the signup/tRPC requests and their responses (status + body)
+- **console.log** — browser console messages and page errors
+
+The terminal also prints a live step-by-step trace and the HTTP status of the signup response.
+
 ## Notes
 
 - The script uses a real browser to handle Cloudflare Turnstile captcha

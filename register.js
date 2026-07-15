@@ -1,10 +1,16 @@
 import { chromium } from "playwright";
-import { readFileSync } from "fs";
-import { resolve } from "path";
+import { readFileSync, mkdirSync, writeFileSync } from "fs";
+import { resolve, join } from "path";
 
 const SIGNUP_URL = "https://behindtheemail.com/signup";
 const PASSWORD = "Pixel123@#";
 const DELAY_BETWEEN_SIGNUPS_MS = 5000;
+
+// Debug mode: set DEBUG=true to capture screenshots, HTML, console + network logs.
+const DEBUG = process.env.DEBUG === "true";
+const DEBUG_DIR = resolve("debug");
+
+let stepCounter = 0;
 
 function loadEmails() {
   const filePath = process.argv[2] || resolve("emails.txt");
@@ -15,33 +21,111 @@ function loadEmails() {
     .filter((line) => line && !line.startsWith("#"));
 }
 
-async function waitForTurnstile(page) {
+function sanitize(name) {
+  return name.replace(/[^a-z0-9._@-]/gi, "_");
+}
+
+// Capture a screenshot + HTML snapshot at a named step.
+async function debugStep(page, email, label) {
+  if (!DEBUG) return;
+  stepCounter += 1;
+  const prefix = `${String(stepCounter).padStart(2, "0")}_${sanitize(email)}_${sanitize(label)}`;
+  const dir = join(DEBUG_DIR, sanitize(email));
+  mkdirSync(dir, { recursive: true });
+  try {
+    await page.screenshot({
+      path: join(dir, `${prefix}.png`),
+      fullPage: true,
+    });
+  } catch (e) {
+    console.log(`    [debug] screenshot failed at "${label}": ${e.message}`);
+  }
+  try {
+    const html = await page.content();
+    writeFileSync(join(dir, `${prefix}.html`), html);
+  } catch (e) {
+    console.log(`    [debug] html dump failed at "${label}": ${e.message}`);
+  }
+  console.log(`    [debug] step "${label}" -> url: ${page.url()}`);
+}
+
+// Attach console + network listeners so we can see what the page does.
+function attachDebugListeners(page, email) {
+  if (!DEBUG) return;
+  const dir = join(DEBUG_DIR, sanitize(email));
+  mkdirSync(dir, { recursive: true });
+  const netLogPath = join(dir, "network.log");
+  const consoleLogPath = join(dir, "console.log");
+
+  page.on("console", (msg) => {
+    const line = `[${msg.type()}] ${msg.text()}\n`;
+    writeFileSync(consoleLogPath, line, { flag: "a" });
+  });
+
+  page.on("pageerror", (err) => {
+    writeFileSync(consoleLogPath, `[pageerror] ${err.message}\n`, { flag: "a" });
+  });
+
+  page.on("request", (req) => {
+    const url = req.url();
+    if (url.includes("signup") || url.includes("trpc") || url.includes("auth")) {
+      const line = `>>> ${req.method()} ${url}\n    body: ${req.postData() || "(none)"}\n`;
+      writeFileSync(netLogPath, line, { flag: "a" });
+    }
+  });
+
+  page.on("response", async (res) => {
+    const url = res.url();
+    if (url.includes("signup") || url.includes("trpc") || url.includes("auth")) {
+      let body = "(unreadable)";
+      try {
+        body = await res.text();
+      } catch {
+        // ignore
+      }
+      const line = `<<< ${res.status()} ${url}\n    resp: ${body}\n`;
+      writeFileSync(netLogPath, line, { flag: "a" });
+      console.log(`    [debug] response ${res.status()} for ${url.split("?")[0]}`);
+    }
+  });
+}
+
+async function waitForTurnstile(page, email) {
+  console.log("    Looking for Turnstile captcha...");
   try {
     const frame = page.frameLocator(
       'iframe[src*="challenges.cloudflare.com"]'
     );
     const checkbox = frame.locator("#challenge-stage");
     await checkbox.waitFor({ state: "visible", timeout: 10000 });
+    console.log("    Turnstile iframe found, waiting for it to process...");
+    await debugStep(page, email, "turnstile_visible");
     await page.waitForTimeout(2000);
     try {
       await checkbox.click({ timeout: 5000 });
+      console.log("    Clicked Turnstile checkbox.");
     } catch {
-      // checkbox may auto-complete
+      console.log("    Turnstile did not need a click (auto-solving).");
     }
     await page.waitForTimeout(3000);
+    await debugStep(page, email, "turnstile_after");
   } catch {
-    // turnstile may not appear or may auto-solve
+    console.log("    No Turnstile challenge appeared (may auto-solve or not required).");
     await page.waitForTimeout(2000);
   }
 }
 
 async function registerAccount(page, email) {
+  console.log("    Navigating to signup page...");
   await page.goto(SIGNUP_URL, { waitUntil: "networkidle", timeout: 30000 });
+  await debugStep(page, email, "loaded");
 
+  console.log("    Filling email...");
   const emailInput = page.locator('input[type="email"], input[name="email"]');
   await emailInput.waitFor({ state: "visible", timeout: 10000 });
   await emailInput.fill(email);
 
+  console.log("    Filling password...");
   const passwordInput = page.locator(
     'input[type="password"], input[name="password"]'
   );
@@ -54,21 +138,30 @@ async function registerAccount(page, email) {
   if (checkboxCount > 0) {
     const isChecked = await termsCheckbox.first().isChecked().catch(() => false);
     if (!isChecked) {
+      console.log("    Accepting terms checkbox...");
       await termsCheckbox.first().click();
     }
+  } else {
+    console.log("    No terms checkbox found.");
   }
 
-  await waitForTurnstile(page);
+  await debugStep(page, email, "form_filled");
 
+  await waitForTurnstile(page, email);
+
+  console.log("    Clicking submit...");
   const submitButton = page.locator(
     'button[type="submit"], button:has-text("Sign up"), button:has-text("Register"), button:has-text("Create")'
   );
   await submitButton.first().click();
+  await debugStep(page, email, "after_submit");
 
   try {
     await page.waitForURL("**/dashboard**", { timeout: 15000 });
+    await debugStep(page, email, "dashboard");
     return { email, success: true };
   } catch {
+    await debugStep(page, email, "no_redirect");
     const errorEl = page.locator(
       '[role="alert"], .error, [class*="error"], [class*="Error"]'
     );
@@ -92,6 +185,11 @@ async function main() {
 
   console.log(`Found ${emails.length} email(s) to register.`);
   console.log(`Password: ${"*".repeat(PASSWORD.length)}`);
+  if (DEBUG) {
+    console.log(`Debug mode ON — artifacts will be saved to: ${DEBUG_DIR}`);
+  } else {
+    console.log("Tip: run with DEBUG=true to capture screenshots, HTML, console + network logs.");
+  }
   console.log("---");
 
   const headless = process.env.HEADLESS === "true";
@@ -112,8 +210,9 @@ async function main() {
   const results = [];
 
   for (const email of emails) {
-    console.log(`Registering: ${email}`);
+    console.log(`\nRegistering: ${email}`);
     const page = await context.newPage();
+    attachDebugListeners(page, email);
 
     try {
       const result = await registerAccount(page, email);
@@ -122,6 +221,7 @@ async function main() {
         result.success ? `  ✓ Success` : `  ✗ Failed: ${result.error}`
       );
     } catch (err) {
+      await debugStep(page, email, "exception").catch(() => {});
       results.push({ email, success: false, error: err.message });
       console.log(`  ✗ Error: ${err.message}`);
     } finally {
@@ -148,6 +248,12 @@ async function main() {
     for (const f of failed) {
       console.log(`  ${f.email}: ${f.error}`);
     }
+  }
+
+  if (DEBUG) {
+    console.log(`\nDebug artifacts saved under: ${DEBUG_DIR}`);
+    console.log("Each email has its own folder with screenshots (.png), HTML (.html),");
+    console.log("network.log (signup/trpc requests + responses) and console.log.");
   }
 }
 

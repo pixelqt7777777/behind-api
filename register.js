@@ -117,12 +117,16 @@ async function waitForTurnstile(page, email) {
 
 async function registerAccount(page, email) {
   console.log("    Navigating to signup page...");
-  await page.goto(SIGNUP_URL, { waitUntil: "networkidle", timeout: 30000 });
+  // Use "domcontentloaded" instead of "networkidle": the site has constant
+  // background traffic (analytics, Sentry) so it never reaches network idle.
+  await page.goto(SIGNUP_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
   await debugStep(page, email, "loaded");
 
-  console.log("    Filling email...");
+  console.log("    Waiting for email field...");
   const emailInput = page.locator('input[type="email"], input[name="email"]');
-  await emailInput.waitFor({ state: "visible", timeout: 10000 });
+  await emailInput.waitFor({ state: "visible", timeout: 20000 });
+
+  console.log("    Filling email...");
   await emailInput.fill(email);
 
   console.log("    Filling password...");

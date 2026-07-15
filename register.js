@@ -115,6 +115,54 @@ async function waitForTurnstile(page, email) {
   }
 }
 
+// Dump the current state of the form + any captcha widgets so we can see
+// exactly why the submit button is (or isn't) enabled.
+async function diagnoseForm(page, email, label) {
+  const info = await page.evaluate(() => {
+    const q = (sel) => Array.from(document.querySelectorAll(sel));
+    const iframes = q("iframe").map((f) => ({
+      src: f.src || "(no src)",
+      name: f.name || "(no name)",
+      id: f.id || "(no id)",
+    }));
+    const submit = document.querySelector('button[type="submit"]');
+    const turnstileInput = document.querySelector(
+      'input[name="cf-turnstile-response"], input[name="g-recaptcha-response"]'
+    );
+    const checkboxes = q('input[type="checkbox"]').map((c) => ({
+      name: c.name || "(no name)",
+      checked: c.checked,
+    }));
+    // any element whose class/id hints at captcha
+    const captchaEls = q("[class*='turnstile'], [class*='captcha'], [id*='turnstile'], [id*='captcha'], .cf-turnstile")
+      .map((e) => e.tagName + "." + (e.className || e.id));
+    return {
+      iframes,
+      submitDisabled: submit ? submit.disabled : "(no submit button)",
+      submitText: submit ? submit.textContent.trim() : null,
+      turnstileTokenPresent: turnstileInput ? !!turnstileInput.value : "(no token input found)",
+      turnstileTokenLen: turnstileInput ? (turnstileInput.value || "").length : 0,
+      checkboxes,
+      captchaEls,
+    };
+  });
+  console.log(`    [diagnose:${label}]`);
+  console.log(`      submit disabled: ${info.submitDisabled} (text: "${info.submitText}")`);
+  console.log(`      turnstile token present: ${info.turnstileTokenPresent} (len ${info.turnstileTokenLen})`);
+  console.log(`      checkboxes: ${JSON.stringify(info.checkboxes)}`);
+  console.log(`      captcha elements: ${JSON.stringify(info.captchaEls)}`);
+  console.log(`      iframes: ${JSON.stringify(info.iframes, null, 0)}`);
+  if (DEBUG) {
+    const dir = join(DEBUG_DIR, sanitize(email));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, `diagnose_${sanitize(label)}.json`),
+      JSON.stringify(info, null, 2)
+    );
+  }
+  return info;
+}
+
 async function registerAccount(page, email) {
   console.log("    Navigating to signup page...");
   // Use "domcontentloaded" instead of "networkidle": the site has constant
@@ -150,14 +198,38 @@ async function registerAccount(page, email) {
   }
 
   await debugStep(page, email, "form_filled");
+  await diagnoseForm(page, email, "form_filled");
 
   await waitForTurnstile(page, email);
 
+  const submitButton = page.locator('button[type="submit"]').first();
+
+  // The button stays disabled until validation + captcha token are ready.
+  // Wait for it to become enabled (captcha may take a few seconds), and
+  // diagnose what's blocking if it never enables.
+  console.log("    Waiting for submit button to become enabled...");
+  try {
+    await submitButton.waitFor({ state: "visible", timeout: 10000 });
+    await page
+      .locator("button[type=\"submit\"]:not([disabled])")
+      .first()
+      .waitFor({ state: "visible", timeout: 30000 });
+    console.log("    Submit button is now enabled.");
+  } catch {
+    console.log("    Submit button never became enabled — diagnosing...");
+    await diagnoseForm(page, email, "button_still_disabled");
+    await debugStep(page, email, "button_disabled");
+    return {
+      email,
+      success: false,
+      error:
+        "Submit button stayed disabled (captcha token or validation not satisfied — see diagnose output)",
+    };
+  }
+
+  await diagnoseForm(page, email, "before_submit");
   console.log("    Clicking submit...");
-  const submitButton = page.locator(
-    'button[type="submit"], button:has-text("Sign up"), button:has-text("Register"), button:has-text("Create")'
-  );
-  await submitButton.first().click();
+  await submitButton.click();
   await debugStep(page, email, "after_submit");
 
   try {

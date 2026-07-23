@@ -1,17 +1,32 @@
 {
-  "name": "behind-api",
+  "name": "text-to-pdf",
   "version": "1.0.0",
-  "description": "Bulk account registration tool for behindtheemail.com",
-  "main": "register.js",
-  "type": "module",
+  "private": true,
   "scripts": {
-    "register": "node register.js",
-    "register:headless": "HEADLESS=true node register.js"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "playwright": "^1.61.1"
+    "next": "^15.3.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "pdf-lib": "^1.17.1",
+    "mammoth": "^1.8.0",
+    "lucide-react": "^0.468.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "typescript": "^5",
+    "tailwindcss": "^3.4.17",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8",
+    "eslint": "^9",
+    "eslint-config-next": "^15.3.4"
   }
 }

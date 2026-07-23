@@ -1,62 +1,129 @@
-# behind-api
+# Text to PDF
 
-Bulk account registration tool for behindtheemail.com using Playwright.
+A production-quality, privacy-first **Text to PDF** web application. Write or import
+text, style it exactly how you want, preview it live, and export a beautifully
+formatted PDF — all **100% in your browser**. No servers, no uploads, no tracking.
 
-## Setup
+![Next.js](https://img.shields.io/badge/Next.js-15-black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-38bdf8)
+
+## Features
+
+### Editor
+- Large, distraction-free writing area
+- Live **word / character / paragraph** counts + reading-time estimate
+- **Undo / Redo** with smart edit coalescing
+- **Find & Replace** (case-sensitive, replace-all)
+- **Auto-save** to the browser (survives refreshes)
+- **Drag & drop** file import — `.txt`, `.md`, `.docx`
+- Paste without formatting
+- Keyboard shortcuts
+
+### PDF Generation
+- One-click, high-quality PDF export powered by **pdf-lib**
+- Smart line wrapping with no text clipping
+- Preserves paragraphs & spacing, automatic page breaks
+- Multi-page support (handles very large documents)
+- Runs entirely client-side
+
+### Page & Layout
+- Page sizes: **A4, Letter, Legal, A3, A5, Custom**
+- Portrait / landscape orientation
+- Margin presets (narrow / normal / wide) + custom margins
+
+### Typography
+- Fonts: Helvetica, Arial, Times New Roman, Georgia, Courier, Roboto, Open Sans
+- Font size, line spacing, letter spacing, paragraph spacing
+- Bold, italic, underline
+- Left / center / right / justify alignment
+
+### Header, Footer & Watermark
+- Optional headers/footers with title, date, page numbers & custom text
+- Text watermark with configurable opacity, rotation, size & position
+
+### Experience
+- Beautiful **light / dark / system** themes with smooth transitions
+- **Live PDF preview** with zoom, fullscreen & page navigation
+- Toast notifications, empty states, loading states, error handling
+- Fully responsive — desktop, tablet & mobile
+- Accessible: keyboard navigable, ARIA labels, screen-reader friendly
+
+## Getting Started
 
 ```bash
 npm install
-npx playwright install chromium
+npm run dev
 ```
 
-## Usage
+Open [http://localhost:3000](http://localhost:3000).
 
-1. Add your emails to `emails.txt` (one per line):
-
-```
-user1@gmail.com
-user2@gmail.com
-user3@gmail.com
-```
-
-2. Run the registration script:
+### Build for production
 
 ```bash
-# With browser visible (recommended for first run — you can see captcha solving)
-npm run register
-
-# Headless mode
-npm run register:headless
-
-# Custom email file
-node register.js path/to/my-emails.txt
+npm run build
+npm run start
 ```
 
-## Configuration
+## Tech Stack
 
-Edit `register.js` to change:
-- `PASSWORD` — the password used for all accounts (default: `Pixel123@#`)
-- `DELAY_BETWEEN_SIGNUPS_MS` — delay between signups in ms (default: 5000)
+| Layer      | Choice                        |
+| ---------- | ----------------------------- |
+| Framework  | Next.js 15 (App Router)       |
+| Language   | TypeScript (strict)           |
+| Styling    | Tailwind CSS                  |
+| PDF engine | pdf-lib                       |
+| DOCX parse | mammoth (lazy-loaded)         |
+| Icons      | lucide-react                  |
 
-## Debug mode
+## Project Structure
 
-To see exactly what's happening (useful on a headless server), run with `DEBUG=true`:
+```
+src/
+├── app/                  # Next.js app router (layout, page, globals)
+├── components/
+│   ├── ui/               # Reusable primitives (Button, Select, Toggle…)
+│   ├── layout/           # Header, Sidebar
+│   ├── editor/           # Editor, toolbar, stats, find & replace
+│   ├── settings/         # Settings panel sections
+│   └── preview/          # Live PDF preview
+├── hooks/                # useSettings, useUndoRedo, useTheme, useToast…
+├── lib/
+│   ├── pdf/              # PDF generation engine + font loading
+│   ├── constants.ts      # Defaults, page sizes, presets
+│   ├── utils.ts          # Helpers (stats, download, debounce…)
+│   └── fileImport.ts     # TXT / MD / DOCX import
+└── types/                # Shared TypeScript types
+```
+
+## Privacy
+
+Everything happens locally in your browser. Your text is never uploaded to any
+server — PDF generation, file import, and auto-save all run client-side. The only
+optional network request is fetching Roboto / Open Sans web-font files for
+embedding (falls back to a standard font if offline).
+
+## Deployment
+
+Deploy to **Vercel** (recommended) or any Node host:
 
 ```bash
-DEBUG=true xvfb-run -a node register.js
+# Vercel
+vercel deploy
+
+# or any platform supporting Next.js
+npm run build && npm run start
 ```
 
-This creates a `debug/` folder with a subfolder per email containing:
-- **Screenshots** (`.png`) of every step: page loaded, form filled, Turnstile, after submit, dashboard/failure
-- **HTML snapshots** (`.html`) of each step
-- **network.log** — the signup/tRPC requests and their responses (status + body)
-- **console.log** — browser console messages and page errors
+## Keyboard Shortcuts
 
-The terminal also prints a live step-by-step trace and the HTTP status of the signup response.
+| Shortcut          | Action              |
+| ----------------- | ------------------- |
+| `Ctrl/Cmd + S`    | Download PDF        |
+| `Ctrl/Cmd + F`    | Find & Replace      |
+| `Ctrl/Cmd + Z`    | Undo                |
+| `Ctrl/Cmd + Y`    | Redo                |
 
-## Notes
+## License
 
-- The script uses a real browser to handle Cloudflare Turnstile captcha
-- Non-headless mode is recommended since Turnstile may block headless browsers
-- A 5-second delay between signups helps avoid rate limiting (limit is 50 requests)
-- If captcha fails, try running in non-headless mode
+MIT
